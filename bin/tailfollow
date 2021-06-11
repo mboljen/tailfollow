@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+#
+# Created:        TIMESTAMP
+# Last Modified:  TIMESTAMP
+#
+# tailfollow:
+#   Imitates tail -f and exits when monitored file is not written to any longer
+
+# Help text
+usage () {
+cat << EOF
+
+Usage: tailfollow [options] <filename>
+
+This script will imitate the command tail with the option follow and
+terminates automatically when the monitored file is no longer written to.
+
+OPTIONS:
+   -t SECS   Time interval between checks.
+   -h        Show this message.
+EOF
+}
+
+# Echo error message on STDERR
+echoerr () { cat <<< "$@" 1>&2; }
+
+# Declare variables
+INTERVAL=10
+
+while getopts t:h OPTION
+do
+    case "${OPTION}"
+    in
+        t)  INTERVAL=${OPTARG}
+            ;;
+        h)  usage
+            exit 0
+            ;;
+        \?) usage
+            exit 1
+            ;;
+    esac
+done
+
+# Skip options
+shift $((OPTIND-1))
+
+#
+LOGFILE=$1
+
+# https://stackoverflow.com/questions/23313486/detecting-when-a-log-is-no-longer-being-written-to-tail-f
+
+tail -f "${LOGFILE}" | while [ 1 ]
+do
+    read -t "$INTERVAL" LOGLINE
+    if [[ -z "${LOGLINE}" && $? -ne 0 ]]
+    then
+        # Variable is empty and read timed out
+        if [[ $(fuser "${LOGFILE}" 2> /dev/null | wc -w) < 2 ]]
+        then
+            # No other process is using the file
+            pkill -f "tail -f \"${LOGFILE}\""
+            break
+        fi
+    else
+        echo -e "${LOGLINE}"
+    fi
+done
